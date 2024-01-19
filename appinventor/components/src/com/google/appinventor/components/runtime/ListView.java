@@ -1,6 +1,6 @@
 // -*- mode: java; c-basic-offset: 2; -*-
 // Copyright 2009-2011 Google, All Rights reserved
-// Copyright 2011-2019 MIT, All rights reserved
+// Copyright 2011-2024 MIT, All rights reserved
 // Released under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
@@ -10,7 +10,6 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
-import android.widget.AdapterView;
 import android.widget.EditText;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -26,10 +25,13 @@ import com.google.appinventor.components.annotations.SimpleProperty;
 import com.google.appinventor.components.annotations.UsesLibraries;
 import com.google.appinventor.components.annotations.UsesPermissions;
 import com.google.appinventor.components.annotations.SimpleFunction;
+import com.google.appinventor.components.annotations.Options;
 import com.google.appinventor.components.common.ComponentCategory;
 import com.google.appinventor.components.common.ComponentConstants;
 import com.google.appinventor.components.common.PropertyTypeConstants;
 import com.google.appinventor.components.common.YaVersion;
+import com.google.appinventor.components.common.LayoutType;
+import com.google.appinventor.components.common.Orientation;
 import com.google.appinventor.components.runtime.util.ElementsUtil;
 import com.google.appinventor.components.runtime.util.ErrorMessages;
 import com.google.appinventor.components.runtime.util.YailList;
@@ -40,6 +42,11 @@ import com.google.appinventor.components.runtime.util.YailDictionary;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import android.graphics.Canvas;
+//import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Rect;
 
 /**
  * This is a visible component that displays a list of text and image elements in your {@link Form} to
@@ -70,16 +77,17 @@ import java.util.List;
 @UsesLibraries(libraries ="recyclerview.jar, cardview.jar, cardview.aar")
 @UsesPermissions(permissionNames = "android.permission.INTERNET," +
         "android.permission.READ_EXTERNAL_STORAGE")
-public final class ListView extends AndroidViewComponent implements AdapterView.OnItemClickListener {
+public final class ListView extends AndroidViewComponent {
 
   private static final String LOG_TAG = "ListView";
 
   private EditText txtSearchBox;
   protected final ComponentContainer container;
   private final LinearLayout linearLayout;
-
   private RecyclerView recyclerView;
   private ListAdapterWithRecyclerView listAdapterWithRecyclerView;
+  private LinearLayoutManager layoutManager;
+
   private List<String> stringItems;
   private List<YailDictionary> dictItems;
   private int selectionIndex;
@@ -113,6 +121,19 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
   private int layout;
   private String propertyValue;  // JSON string representing data entered through the Designer
 
+  private int elementColor;
+  private String txtSearchHint;
+  private boolean multiSelect;
+  private boolean divider;
+  private Paint dividerPaint;
+  private int dividerColor;
+  private int dividerSize;
+  private static final int DEFAULT_DIVIDER_SIZE = 0;
+  private boolean first = true; //flag for first element margins
+  private int margins;
+  private static final int DEFAULT_RADIUS = 0;
+  private int radius;
+
   /**
    * Creates a new ListView component.
    *
@@ -134,6 +155,14 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
     LayoutParams params = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
     recyclerView.setLayoutParams(params);
 
+    layoutManager = new LinearLayoutManager(container.$context(), LinearLayoutManager.VERTICAL, false);
+    recyclerView.setLayoutManager(layoutManager);
+
+    dividerColor = Component.COLOR_WHITE;
+    dividerSize = DEFAULT_DIVIDER_SIZE;
+    margins = DEFAULT_DIVIDER_SIZE;
+    setDivider();
+
     txtSearchBox = new EditText(container.$context());
     txtSearchBox.setSingleLine(true);
     txtSearchBox.setWidth(Component.LENGTH_FILL_PARENT);
@@ -154,15 +183,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
       @Override
       public void onTextChanged(CharSequence cs, int arg1, int arg2, int arg3) {
         // When user changed the Text
-        if (cs.length() > 0) {
-          if (!listAdapterWithRecyclerView.hasVisibleItems()) {
-            setAdapterData();
-          }
-          listAdapterWithRecyclerView.getFilter().filter(cs);
-          recyclerView.setAdapter(listAdapterWithRecyclerView);
-        } else {
-          setAdapterData();
-        }
+        listAdapterWithRecyclerView.getFilter().filter(cs);
       }
 
       @Override
@@ -187,10 +208,15 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
     // need to have the textColor set first, since they reset the
     // adapter
 
+    ElementColor(Component.COLOR_BLACK);
     BackgroundColor(Component.COLOR_BLACK);
     SelectionColor(Component.COLOR_LTGRAY);
     TextColor(Component.COLOR_WHITE);
     TextColorDetail(Component.COLOR_WHITE);
+    DividerColor(Component.COLOR_WHITE);
+    DividerThickness(DEFAULT_DIVIDER_SIZE);
+    ElementMarginsWidth(DEFAULT_DIVIDER_SIZE);
+    ElementCornerRadius(DEFAULT_RADIUS);
     FontSize(22.0f);  // This was the original size of ListView text.
     FontSizeDetail(Component.FONT_DEFAULT_SIZE);
     FontTypeface(Component.TYPEFACE_DEFAULT);
@@ -198,6 +224,8 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
     // initially assuming that the image is of square shape
     ImageWidth(DEFAULT_IMAGE_WIDTH);
     ImageHeight(DEFAULT_IMAGE_WIDTH);
+    MultiSelect(false);
+    FilterHintText("Search list...");
     ElementsFromString("");
     ListData("");
 
@@ -277,6 +305,20 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
     return showFilter;
   }
 
+  @SimpleProperty(description = "Hint text displayed in the filter bar.",
+          category = PropertyCategory.APPEARANCE)
+  public String FilterHintText() {  
+    return txtSearchHint;
+  }
+
+  @DesignerProperty(editorType = PropertyTypeConstants.PROPERTY_TYPE_STRING,
+          defaultValue = "Search list...")
+  @SimpleProperty(description = "")
+  public void FilterHintText(String text) {  
+    this.txtSearchHint = text;              
+    txtSearchBox.setHint(text);
+  }
+
   /**
    * Specifies the list of choices to display.
    *
@@ -285,9 +327,9 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
   @SimpleProperty(description = "List of elements to show in the ListView. Depending on the ListView, this may be a list of strings or a list of 3-element sub-lists containing Text, Description, and Image file name.",
           category = PropertyCategory.BEHAVIOR)
   public void Elements(YailList itemsList) {
-    dictItems.clear();
+    dictItems = new ArrayList<>();
     stringItems = new ArrayList<>();
-    if (itemsList.size() > 0) {
+    if (!itemsList.isEmpty()) {
       Object firstitem = itemsList.getObject(0);
       // Check to see if this is a list of strings (backward compatibility) or a list of Dictionaries
       if (firstitem instanceof YailDictionary) {
@@ -304,13 +346,18 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
             yailItem.put(Component.LISTVIEW_KEY_MAIN_TEXT, YailList.YailListElementToString(o));
             dictItems.add(i, yailItem);
           }
-        }
+        } 
+        listAdapterWithRecyclerView.updateData(dictItems);
       } else {
         // Support legacy single-string ListViews
         stringItems = ElementsUtil.elementsStrings(itemsList, "ListView");
+        listAdapterWithRecyclerView.updateStringData(stringItems);
       }
+    } else {
+      // The input is empty, clear the adapter.
+      listAdapterWithRecyclerView.updateData(dictItems);
     }
-    setAdapterData();
+    listAdapterWithRecyclerView.notifyDataSetChanged();
   }
 
   /**
@@ -320,11 +367,11 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    * @suppressdoc
    */
   @SimpleProperty(category = PropertyCategory.BEHAVIOR)
-  public YailList Elements() {
-    if (dictItems.size() > 0) {
-      return YailList.makeList(dictItems);
+  public List Elements() {
+    if (!dictItems.isEmpty()) {
+      return dictItems;
     } else {
-      return ElementsUtil.makeYailListFromList(stringItems);
+      return stringItems;
     }
   }
 
@@ -340,39 +387,32 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
           "such as: Cheese,Fruit,Bacon,Radish. Each word before the comma will be an element in the " +
           "list.", category = PropertyCategory.BEHAVIOR)
   public void ElementsFromString(String itemstring) {
+    dictItems = new ArrayList<>();
+    stringItems = new ArrayList<>();
     stringItems = ElementsUtil.elementsListFromString(itemstring);
-    setAdapterData();
+    
+    listAdapterWithRecyclerView.updateStringData(stringItems);
+    listAdapterWithRecyclerView.notifyDataSetChanged();
   }
 
   /**
    * Sets the stringItems of the ListView through an adapter
    */
   public void setAdapterData() {
-    LinearLayoutManager layoutManager;
+    List<Object> data = new ArrayList<>();
     if (!dictItems.isEmpty()) {
-      // if the data is available in AddData property
-      listAdapterWithRecyclerView = new ListAdapterWithRecyclerView(container, dictItems, textColor, detailTextColor, fontSizeMain, fontSizeDetail, fontTypeface, fontTypeDetail, layout, backgroundColor, selectionColor, imageWidth, imageHeight, false);
-
-      if (orientation == ComponentConstants.LAYOUT_ORIENTATION_HORIZONTAL) {
-        layoutManager = new LinearLayoutManager(container.$context(), LinearLayoutManager.HORIZONTAL, false);
-      } else { // if (orientation == ComponentConstants.LAYOUT_ORIENTATION_VERTICAL) {
-        layoutManager = new LinearLayoutManager(container.$context(), LinearLayoutManager.VERTICAL, false);
-      }
-    } else {
-      // Legacy Support: if the data is not available in AddData property but is available in ElementsFromString property
-      listAdapterWithRecyclerView = new ListAdapterWithRecyclerView(container, stringItems, textColor, fontSizeMain, fontTypeface, backgroundColor, selectionColor);
-
-      layoutManager = new LinearLayoutManager(container.$context(), LinearLayoutManager.VERTICAL, false);
-    }
+      data = new ArrayList<Object>(dictItems);
+    } else { 
+      data = new ArrayList<Object>(stringItems);
+    } 
+    listAdapterWithRecyclerView = new ListAdapterWithRecyclerView(container, data, layout, textColor, detailTextColor, fontSizeMain, fontSizeDetail, fontTypeface, fontTypeDetail, elementColor, selectionColor, imageWidth, imageHeight, radius);
     listAdapterWithRecyclerView.setOnItemClickListener(new ListAdapterWithRecyclerView.ClickListener() {
       @Override
       public void onItemClick(int position, View v) {
-        listAdapterWithRecyclerView.toggleSelection(position);
         SelectionIndex(position + 1);
         AfterPicking();
       }
     });
-    recyclerView.setLayoutManager(layoutManager);
     recyclerView.setAdapter(listAdapterWithRecyclerView);
   }
 
@@ -409,22 +449,25 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
           category = PropertyCategory.BEHAVIOR)
   public void SelectionIndex(int index) {
     if (!dictItems.isEmpty()) {
-      selectionIndex = ElementsUtil.selectionIndex(index, YailList.makeList(dictItems));
-      if (selectionIndex > 0) {
-        selection = dictItems.get(selectionIndex - 1).get(Component.LISTVIEW_KEY_MAIN_TEXT).toString();
-        selectionDetailText = ElementsUtil.toStringEmptyIfNull(dictItems.get(selectionIndex - 1).get(Component.LISTVIEW_KEY_DESCRIPTION).toString());
-      } else {
-        selection = "";
-        selectionDetailText = "";
-      }
-    } else {
+      selectionIndex = ElementsUtil.selectionIndexInStringList(index, YailList.makeList(dictItems));
+      selection = index < 1 ? "" : dictItems.get(selectionIndex - 1).get(Component.LISTVIEW_KEY_MAIN_TEXT).toString();
+      selectionDetailText = index < 1 ? "" : ElementsUtil.toStringEmptyIfNull(dictItems.get(selectionIndex - 1).get(Component.LISTVIEW_KEY_DESCRIPTION).toString());
+    } else if (!stringItems.isEmpty()) {
       selectionIndex = ElementsUtil.selectionIndexInStringList(index, stringItems);
       // Now, we need to change Selection to correspond to SelectionIndex.
       selection = ElementsUtil.setSelectionFromIndexInStringList(index, stringItems);
       selectionDetailText = "";
     }
     if (listAdapterWithRecyclerView != null) {
-      listAdapterWithRecyclerView.toggleSelection(selectionIndex - 1);
+      if (index > 0) {
+        if (multiSelect) {
+          listAdapterWithRecyclerView.changeSelections(selectionIndex - 1);
+        } else {
+          listAdapterWithRecyclerView.toggleSelection(selectionIndex - 1);
+        }
+      } else {
+        listAdapterWithRecyclerView.clearSelections();
+      }
     }
   }
 
@@ -441,11 +484,66 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
     }
     if (dictItems.size() >= index) {
       dictItems.remove(index - 1);
+      listAdapterWithRecyclerView.updateData(dictItems);
     }
     if (stringItems.size() >= index) {
       stringItems.remove(index - 1);
+      listAdapterWithRecyclerView.updateStringData(stringItems);
     }
-    setAdapterData();
+    listAdapterWithRecyclerView.notifyItemRemoved(index - 1);
+  }
+  
+  /**
+   * Add new Item to list
+   */
+  @SimpleFunction(
+      description = "Add new Item to list at the end")
+  public void AddItem(String mainText, String detailText, String imageName) {
+    if (!dictItems.isEmpty()) {
+      dictItems.add(CreateElement(mainText, detailText, imageName));
+      listAdapterWithRecyclerView.updateData(dictItems);
+    } else if (!stringItems.isEmpty()) {
+      stringItems.add(mainText);
+      listAdapterWithRecyclerView.updateStringData(stringItems);
+    } else {
+      if (layout == Component.LISTVIEW_LAYOUT_SINGLE_TEXT) {
+        stringItems.add(mainText);
+        listAdapterWithRecyclerView.updateStringData(stringItems);
+      } else {
+        dictItems.add(CreateElement(mainText, detailText, imageName));
+        listAdapterWithRecyclerView.updateData(dictItems);
+      }
+    }
+    listAdapterWithRecyclerView.notifyItemChanged(listAdapterWithRecyclerView.getItemCount() - 1);
+  }
+
+  /**
+   * Add new Item to list at a given index
+   */
+  @SimpleFunction(
+      description = "Add new Item to list at a given index")
+  public void AddItemAtIndex(int index, String mainText, String detailText, String imageName) {
+    if (index < 1 || index > Math.max(dictItems.size(), stringItems.size())+ 1) {
+      container.$form().dispatchErrorOccurredEvent(this, "AddItemAtIndex",
+          ErrorMessages.ERROR_LISTVIEW_INDEX_OUT_OF_BOUNDS, index);
+      return;
+    }
+    if (!dictItems.isEmpty()) {
+      dictItems.add(index - 1, CreateElement(mainText, detailText, imageName));
+      listAdapterWithRecyclerView.updateData(dictItems);
+    } else if (!stringItems.isEmpty()){
+      stringItems.add(index - 1, mainText);
+      listAdapterWithRecyclerView.updateStringData(stringItems);
+    } else {
+      if (layout == Component.LISTVIEW_LAYOUT_SINGLE_TEXT) {
+        stringItems.add(index - 1, mainText);
+        listAdapterWithRecyclerView.updateStringData(stringItems);
+      } else{
+        dictItems.add(index - 1, CreateElement(mainText, detailText, imageName));
+        listAdapterWithRecyclerView.updateData(dictItems);
+      }      
+    }
+    listAdapterWithRecyclerView.notifyItemInserted(index - 1);
   }
 
   /**
@@ -496,19 +594,6 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
   }
 
   /**
-   * Simple event to raise when the component is clicked. Implementation of
-   * AdapterView.OnItemClickListener
-   */
-  @Override
-  public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-    YailDictionary item = (YailDictionary) parent.getAdapter().getItem(position);
-    this.selection = ElementsUtil.toStringEmptyIfNull(item.get(Component.LISTVIEW_KEY_MAIN_TEXT).toString());
-    this.selectionDetailText = ElementsUtil.toStringEmptyIfNull(item.get("Text2"));
-    this.selectionIndex = position + 1;
-    AfterPicking();
-  }
-
-  /**
    * Simple event to be raised after the an element has been chosen in the list.
    * The selected element is available in the {@link #Selection(String)} property.
    */
@@ -517,8 +602,6 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
   public void AfterPicking() {
     EventDispatcher.dispatchEvent(this, "AfterPicking");
   }
-
-
 
   /**
    * Returns the listview's background color as an alpha-red-green-blue
@@ -552,7 +635,39 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
     backgroundColor = argb;
     recyclerView.setBackgroundColor(backgroundColor);
     linearLayout.setBackgroundColor(backgroundColor);
-//    setBackgroundColor(backgroundColor);
+  }
+
+  
+  /**
+   * Returns the listview's element color as an alpha-red-green-blue
+   * integer, i.e., {@code 0xAARRGGBB}.  An alpha of {@code 00}
+   * indicates fully transparent and {@code FF} means opaque.
+   *
+   * @return background color in the format 0xAARRGGBB, which includes
+   * alpha, red, green, and blue components
+   */
+  @SimpleProperty(description = "The color of the listview background.",
+          category = PropertyCategory.APPEARANCE)
+  @IsColor
+  public int ElementColor() {
+    return elementColor;
+  }
+
+  /**
+   * The color of the `ListView` element.
+   *
+   * @param argb element color in the format 0xAARRGGBB, which
+   *             includes alpha, red, green, and blue components
+   * @internaldoc Specifies the ListView's element color as an alpha-red-green-blue
+   * integer, i.e., {@code 0xAARRGGBB}.  An alpha of {@code 00}
+   * indicates fully transparent and {@code FF} means opaque.
+   */
+  @DesignerProperty(editorType = PropertyTypeConstants.PROPERTY_TYPE_COLOR,
+          defaultValue = Component.DEFAULT_VALUE_COLOR_BLACK)
+  @SimpleProperty
+  public void ElementColor(int argb) {
+    elementColor = argb;
+    setAdapterData();
   }
 
   /**
@@ -596,8 +711,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    * @return background color in the format 0xAARRGGBB, which includes
    * alpha, red, green, and blue components
    */
-  @SimpleProperty(
-          description = "The text color of the listview stringItems.",
+  @SimpleProperty(description = "The text color of the listview stringItems.",
           category = PropertyCategory.APPEARANCE)
   @IsColor
   public int TextColor() {
@@ -626,8 +740,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    *
    * @return color of the secondary text
    */
-  @SimpleProperty(
-          description = "The text color of DetailText of listview stringItems. ",
+  @SimpleProperty(description = "The text color of DetailText of listview stringItems. ",
           category = PropertyCategory.APPEARANCE)
   public int TextColorDetail() {
     return detailTextColor;
@@ -656,8 +769,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    *
    * @return text size as an integer
    */
-  @SimpleProperty(
-      description = "The text size of the listview items.",
+  @SimpleProperty(description = "The text size of the listview items.",
       category = PropertyCategory.APPEARANCE)
   public int TextSize() {
     return Math.round(fontSizeMain);
@@ -683,10 +795,8 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    *
    * @return text size as an float
    */
-  @SimpleProperty(
-          description = "The text size of the listview stringItems.",
-          category = PropertyCategory.APPEARANCE,
-          userVisible = false)
+  @SimpleProperty(description = "The text size of the listview stringItems.",
+          category = PropertyCategory.APPEARANCE, userVisible = false)
   public float FontSize() {
     return fontSizeMain;
   }
@@ -713,8 +823,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    *
    * @return text size as an float
    */
-  @SimpleProperty(
-          description = "The text size of the listview stringItems.",
+  @SimpleProperty(description = "The text size of the listview stringItems.",
           category = PropertyCategory.APPEARANCE)
   public float FontSizeDetail() {
     return fontSizeDetail;
@@ -746,8 +855,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    *          {@link Component#TYPEFACE_SANSSERIF} or
    *          {@link Component#TYPEFACE_MONOSPACE}
    */
-  @SimpleProperty(
-          category = PropertyCategory.APPEARANCE,
+  @SimpleProperty(category = PropertyCategory.APPEARANCE,
           userVisible = false)
   public String FontTypeface() {
     return fontTypeface;
@@ -764,8 +872,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    */
   @DesignerProperty(editorType = PropertyTypeConstants.PROPERTY_TYPE_TYPEFACE,
           defaultValue = Component.TYPEFACE_DEFAULT + "")
-  @SimpleProperty(
-          userVisible = false)
+  @SimpleProperty(userVisible = false)
   public void FontTypeface(String typeface) {
     fontTypeface = typeface;
     setAdapterData();
@@ -780,8 +887,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    *          {@link Component#TYPEFACE_SANSSERIF} or
    *          {@link Component#TYPEFACE_MONOSPACE}
    */
-  @SimpleProperty(
-          category = PropertyCategory.APPEARANCE,
+  @SimpleProperty(category = PropertyCategory.APPEARANCE,
           userVisible = false)
   public String FontTypefaceDetail() {
     return fontTypeDetail;
@@ -809,8 +915,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    *
    * @return width of image
    */
-  @SimpleProperty(
-          description = "The image width of the listview image.",
+  @SimpleProperty(description = "The image width of the listview image.",
           category = PropertyCategory.APPEARANCE)
   public int ImageWidth() {
     return imageWidth;
@@ -834,8 +939,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    *
    * @return height of image
    */
-  @SimpleProperty(
-          description = "The image height of the listview image stringItems.",
+  @SimpleProperty(description = "The image height of the listview image stringItems.",
           category = PropertyCategory.APPEARANCE)
   public int ImageHeight() {
     return imageHeight;
@@ -855,26 +959,55 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
   }
 
   /**
-   * Returns type of layout selected to display. Designer only property.
+   * Returns type of layout selected to display.
    *
    * @return layout as integer value
    */
-  @SimpleProperty(category = PropertyCategory.APPEARANCE, userVisible = false)
+  @SimpleProperty(category = PropertyCategory.APPEARANCE, userVisible = true)
   public int ListViewLayout() {
     return layout;
   }
 
   /**
-   * Specifies type of layout for ListView row. Designer only property.
+   * Specifies type of layout for ListView row.
    *
    * @param value integer value to determine type of ListView layout
    */
   @DesignerProperty(editorType = PropertyTypeConstants.PROPERTY_TYPE_LISTVIEW_LAYOUT,
           defaultValue = ComponentConstants.LISTVIEW_LAYOUT_SINGLE_TEXT + "")
   @SimpleProperty(userVisible = false)
-  public void ListViewLayout(int value) {
+  public void ListViewLayout(@Options(LayoutType.class) int value) {
     layout = value;
     setAdapterData();
+  }
+  
+  /**
+   * Sets the multiselect function. `true`{:.logic.block} will enable the function,
+   * `false`{:.logic.block} will disable.
+   *
+   * @param multiSelect sets the function according to this input
+   */
+  @DesignerProperty(editorType = PropertyTypeConstants.PROPERTY_TYPE_BOOLEAN,
+          defaultValue = "False")
+  @SimpleProperty(description = "Sets visibility of ShowFilterBar. True will show the bar, " +
+          "False will hide it.")
+  public void MultiSelect(boolean multiSelect) {
+    if (selectionIndex > 0) {
+      listAdapterWithRecyclerView.clearSelections();
+    }
+    this.multiSelect = multiSelect;
+  }
+
+  /**
+   * Returns true or false depending on the enabled state of multiselect.
+   *
+   * @return true or false (is multiselect)
+   * @suppressdoc
+   */
+  @SimpleProperty(category = PropertyCategory.BEHAVIOR,
+          description = "Returns current state of ShowFilterBar for visibility.")
+  public boolean MultiSelect() {
+    return multiSelect;
   }
 
   /**
@@ -883,8 +1016,7 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
    * @return one of {@link ComponentConstants#LAYOUT_ORIENTATION_VERTICAL},
    * {@link ComponentConstants#LAYOUT_ORIENTATION_HORIZONTAL},
    */
-  @SimpleProperty(
-          category = PropertyCategory.APPEARANCE)
+  @SimpleProperty(category = PropertyCategory.APPEARANCE)
   public int Orientation() {
     return orientation;
   }
@@ -901,10 +1033,15 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
   @DesignerProperty(editorType = PropertyTypeConstants.PROPERTY_TYPE_RECYCLERVIEW_ORIENTATION,
           defaultValue = ComponentConstants.LAYOUT_ORIENTATION_VERTICAL + "")
   @SimpleProperty(description = "Specifies the layout's orientation (vertical, horizontal). ")
-  public void Orientation(int orientation) {
+  public void Orientation(@Options(Orientation.class) int orientation) {
     this.orientation = orientation;
-    setAdapterData();
-  }
+    if (orientation == ComponentConstants.LAYOUT_ORIENTATION_HORIZONTAL) {
+        layoutManager.setOrientation(LinearLayoutManager.HORIZONTAL);
+      } else { // if (orientation == ComponentConstants.LAYOUT_ORIENTATION_VERTICAL) {
+        layoutManager.setOrientation(LinearLayoutManager.VERTICAL);
+      }
+      recyclerView.requestLayout();
+    }
 
   /**
    * Returns the data to be displayed in the ListView as a JsonString. Designer only property.
@@ -929,7 +1066,8 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
   @SimpleProperty(userVisible = false, category = PropertyCategory.BEHAVIOR)
   public void ListData(String propertyValue) {
     this.propertyValue = propertyValue;
-    dictItems.clear();
+    dictItems = new ArrayList<>();
+    stringItems = new ArrayList<>();
     if (propertyValue != null && propertyValue != "") {
       try {
         JSONArray arr = new JSONArray(propertyValue);
@@ -948,8 +1086,9 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
         Log.e(LOG_TAG, "Malformed JSON in ListView.ListData", e);
         container.$form().dispatchErrorOccurredEvent(this, "ListView.ListData", ErrorMessages.ERROR_DEFAULT, e.getMessage());
       }
+      listAdapterWithRecyclerView.updateData(dictItems);
+      listAdapterWithRecyclerView.notifyDataSetChanged();
     }
-    setAdapterData();
   }
 
   /**
@@ -983,9 +1122,189 @@ public final class ListView extends AndroidViewComponent implements AdapterView.
   public String GetImageName(final YailDictionary listElement) {
     return listElement.get("Image").toString();
   }
+  
+  private void setDivider() {
+    DividerItemDecoration dividerDecoration = new DividerItemDecoration();
+    for (int i = 0; i < recyclerView.getItemDecorationCount(); i++) {
+      RecyclerView.ItemDecoration decoration = recyclerView.getItemDecorationAt(i);
+      if (decoration instanceof DividerItemDecoration) {
+        recyclerView.removeItemDecorationAt(i);
+        break;
+      }
+    }
+    recyclerView.addItemDecoration(dividerDecoration);
+  }
 
-  @SimpleFunction(description = "Reload the ListView to reflect any changes in the data.")
-  public void Refresh() {
+ /**
+   * Returns the listview's divider color as an alpha-red-green-blue
+   * integer, i.e., {@code 0xAARRGGBB}.  An alpha of {@code 00}
+   * indicates fully transparent and {@code FF} means opaque.
+   *
+   * @return divider color in the format 0xAARRGGBB, which includes
+   * alpha, red, green, and blue components
+   */
+  @SimpleProperty(description = "The color of the listview divider.",
+          category = PropertyCategory.APPEARANCE)
+  @IsColor
+  public int DividerColor() {
+    return dividerColor;
+  }
+
+  /**
+   * The color of the `ListView` divider.
+   *
+   * @param argb divider color in the format 0xAARRGGBB, which
+   *             includes alpha, red, green, and blue components
+   * @internaldoc Specifies the ListView's divider color as an alpha-red-green-blue
+   * integer, i.e., {@code 0xAARRGGBB}.  An alpha of {@code 00}
+   * indicates fully transparent and {@code FF} means opaque.
+   */
+  @DesignerProperty(editorType = PropertyTypeConstants.PROPERTY_TYPE_COLOR,
+          defaultValue = Component.DEFAULT_VALUE_COLOR_WHITE)
+  @SimpleProperty
+  public void DividerColor(int argb) {
+    dividerColor = argb;
+    dividerPaint = new Paint();
+    dividerPaint.setColor(argb);
+    setDivider();
+  }
+
+  /**
+   * Returns the divider thickness of ListView
+   *
+   * @return thickness of divider
+   */
+  @SimpleProperty(description = "The image width of the listview image.",
+          category = PropertyCategory.APPEARANCE)
+  public int DividerThickness() {
+    return dividerSize;
+  }
+
+  /**
+   * Specifies the divider thickness of ListView
+   *
+   * @param size sets the thickness of divider in the ListView
+   */
+  @DesignerProperty(editorType = PropertyTypeConstants.PROPERTY_TYPE_NON_NEGATIVE_INTEGER,
+          defaultValue = DEFAULT_DIVIDER_SIZE + "")
+  @SimpleProperty
+  public void DividerThickness(int size) {
+    this.dividerSize = size;
+    setDivider();
+  }
+
+  /**
+   * Returns the divider thickness of ListView
+   *
+   * @return thickness of divider
+   */
+  @SimpleProperty(description = "The image width of the listview image.",
+          category = PropertyCategory.APPEARANCE)
+  public int ElementMarginsWidth() {
+    return margins;
+  }
+
+  /**
+   * Specifies the divider thickness of ListView
+   *
+   * @param width sets the width of margins in ListView items
+   */
+  @DesignerProperty(editorType = PropertyTypeConstants.PROPERTY_TYPE_NON_NEGATIVE_INTEGER,
+          defaultValue = DEFAULT_DIVIDER_SIZE + "")
+  @SimpleProperty
+  public void ElementMarginsWidth(int width) {
+    this.margins = width;    
+    setDivider();
+  }
+
+  /**
+   * Returns the divider thickness of ListView
+   *
+   * @return thickness of divider
+   */
+  @SimpleProperty(description = "The image width of the listview image.",
+          category = PropertyCategory.APPEARANCE)
+  public float ElementCornerRadius() {
+    return radius;
+  }
+
+  /**
+   * Specifies the divider thickness of ListView
+   *
+   * @param width sets the width of margins in ListView items
+   */
+  @DesignerProperty(editorType = PropertyTypeConstants.PROPERTY_TYPE_NON_NEGATIVE_INTEGER,
+          defaultValue = DEFAULT_RADIUS + "")
+  @SimpleProperty
+  public void ElementCornerRadius(int radius) {
+    this.radius = radius;    
     setAdapterData();
   }
+
+  private class DividerItemDecoration extends RecyclerView.ItemDecoration {
+    public DividerItemDecoration() {      
+    }
+    @Override
+    public void onDraw(Canvas canvas, RecyclerView parent, RecyclerView.State state) {
+      if (margins == 0) {
+        int childCount = parent.getChildCount();
+        if (orientation == ComponentConstants.LAYOUT_ORIENTATION_HORIZONTAL) {
+          for (int i = 0; i < childCount - 1; i++) {
+            View child = parent.getChildAt(i);
+            int position = parent.getChildAdapterPosition(child);
+            if (position != RecyclerView.NO_POSITION) {
+              int left = child.getRight();
+              int right = left + dividerSize;
+              int top = child.getTop();
+              int bottom = child.getBottom();
+              canvas.drawRect(left, top, right, bottom, dividerPaint);
+            }
+          }
+        } else {
+          int width = parent.getWidth();
+          for (int i = 0; i < childCount - 1; i++) {
+            View child = parent.getChildAt(i);
+            int position = parent.getChildAdapterPosition(child);
+            if (position != RecyclerView.NO_POSITION) {
+              int top = child.getBottom();
+              int bottom = top + dividerSize;
+              canvas.drawRect(0, top, width, bottom, dividerPaint);
+            }
+          }
+        }
+      } 
+    }
+
+    @Override
+    public void getItemOffsets(Rect outRect, View view, RecyclerView parent, RecyclerView.State state) {
+      int position = parent.getChildAdapterPosition(view);
+      int spanCount = 1;
+      if (margins == 0) {
+        if (position != RecyclerView.NO_POSITION && position < parent.getAdapter().getItemCount() -1) {
+          if (orientation == ComponentConstants.LAYOUT_ORIENTATION_HORIZONTAL) {
+            outRect.set(0, 0, dividerSize, 0);
+          } else {
+            outRect.set(0, 0, 0, dividerSize);
+          }
+        } else {
+          outRect.setEmpty();
+        }
+      } else {
+        int column = position % spanCount;
+        outRect.left = margins - column * margins / spanCount;
+        outRect.right = (column + 1) * margins / spanCount;
+        if (position < spanCount || first) {
+            first = false;
+            outRect.top = margins;
+        }        
+        outRect.bottom = margins;
+      }
+    }
+  }
+
+  //I don't think this is necessary
+  /* @SimpleFunction(description = "Reload the ListView to reflect any changes in the data.")
+  public void Refresh() {
+    setAdapterData();
+  } */
 }

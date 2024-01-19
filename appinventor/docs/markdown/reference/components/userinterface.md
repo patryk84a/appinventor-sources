@@ -675,12 +675,30 @@ This is a visible component that displays a list of text and image elements in y
 {:id="ListView.BackgroundColor" .color} *BackgroundColor*
 : The color of the `ListView` background.
 
+{:id="ListView.DividerColor" .color} *DividerColor*
+: The color of the `ListView` divider.
+
+{:id="ListView.DividerThickness" .number} *DividerThickness*
+: Specifies the divider thickness of ListView
+
+{:id="ListView.ElementColor" .color} *ElementColor*
+: The color of the `ListView` element.
+
+{:id="ListView.ElementCornerRadius" .number} *ElementCornerRadius*
+: Specifies the divider thickness of ListView
+
+{:id="ListView.ElementMarginsWidth" .number} *ElementMarginsWidth*
+: Specifies the divider thickness of ListView
+
 {:id="ListView.Elements" .list .bo} *Elements*
 : Specifies the list of choices to display.
 
 {:id="ListView.ElementsFromString" .text .wo} *ElementsFromString*
 : Set the list of choices specified as a string with the elements separated by commas
  such as: Cheese,Fruit,Bacon,Radish.
+
+{:id="ListView.FilterHintText" .text} *FilterHintText*
+: Hint text displayed in the filter bar.
 
 {:id="ListView.FontSizeDetail" .number} *FontSizeDetail*
 : Specifies the `ListView` item's text font size
@@ -714,7 +732,11 @@ This is a visible component that displays a list of text and image elements in y
  Designer only property.
 
 {:id="ListView.ListViewLayout" .number .do} *ListViewLayout*
-: Specifies type of layout for ListView row. Designer only property.
+: Specifies type of layout for ListView row.
+
+{:id="ListView.MultiSelect" .boolean} *MultiSelect*
+: Sets the multiselect function. `true`{:.logic.block} will enable the function,
+ `false`{:.logic.block} will disable.
 
 {:id="ListView.Orientation" .number} *Orientation*
 : Specifies the layout's orientation. This may be: `Vertical`, which displays elements
@@ -772,6 +794,12 @@ This is a visible component that displays a list of text and image elements in y
 
 {:.methods}
 
+{:id="ListView.AddItem" class="method"} <i/> AddItem(*mainText*{:.text},*detailText*{:.text},*imageName*{:.text})
+: Add new Item to list
+
+{:id="ListView.AddItemAtIndex" class="method"} <i/> AddItemAtIndex(*index*{:.number},*mainText*{:.text},*detailText*{:.text},*imageName*{:.text})
+: Add new Item to list at a given index
+
 {:id="ListView.CreateElement" class="method returns dictionary"} <i/> CreateElement(*mainText*{:.text},*detailText*{:.text},*imageName*{:.text})
 : Creates a
 
@@ -783,9 +811,6 @@ This is a visible component that displays a list of text and image elements in y
 
 {:id="ListView.GetMainText" class="method returns text"} <i/> GetMainText(*listElement*{:.dictionary})
 : Get the Main Text of a ListView element.
-
-{:id="ListView.Refresh" class="method"} <i/> Refresh()
-: Reload the ListView to reflect any changes in the data.
 
 {:id="ListView.RemoveItemAtIndex" class="method"} <i/> RemoveItemAtIndex(*index*{:.number})
 : Removes Item from list at a given index
