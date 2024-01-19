@@ -1213,7 +1213,7 @@ public final class ListView extends AndroidViewComponent {
           defaultValue = DEFAULT_DIVIDER_SIZE + "")
   @SimpleProperty
   public void ElementMarginsWidth(int width) {
-    this.margins = width;    
+    this.margins = width;
     setDivider();
   }
 
@@ -1272,7 +1272,7 @@ public final class ListView extends AndroidViewComponent {
             }
           }
         }
-      } 
+      }
     }
 
     @Override

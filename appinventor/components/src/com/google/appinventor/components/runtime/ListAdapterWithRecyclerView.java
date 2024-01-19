@@ -65,7 +65,7 @@ public class ListAdapterWithRecyclerView
   private List<Integer> selectedItems = new ArrayList<>();
   
   private int idCard;
-  private int idFirst ;
+  private int idFirst;
   private int idSecond = -1;
   private int idImages = -1;  
 
@@ -358,29 +358,25 @@ public class ListAdapterWithRecyclerView
 
     public RvViewHolder(View view) {
       super(view);
-      
       view.setOnClickListener(this);
-
       cardView = view.findViewById(idCard);
       textViewFirst = view.findViewById(idFirst);
-
       if (idSecond != -1) {
         textViewSecond = view.findViewById(idSecond);
       }
-
       if (idImages != -1) {
         imageVieww = view.findViewById(idImages);
       }
     }
+
     @Override
     public void onClick(View v) {
       int position = getAdapterPosition();
-
       if (!oryginalPositions.isEmpty()) {
         position = oryginalPositions.get(position);
       }
       clickListener.onItemClick(position, v);
-    }   
+    }
   }
 
   public void setOnItemClickListener(ClickListener clickListener) {
