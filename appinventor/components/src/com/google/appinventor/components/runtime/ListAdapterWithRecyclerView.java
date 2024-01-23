@@ -40,11 +40,9 @@ import java.util.List;
 
 public class ListAdapterWithRecyclerView
     extends RecyclerView.Adapter<ListAdapterWithRecyclerView.RvViewHolder>  implements Filterable {
-
   private static final String LOG_TAG = "ListAdapterRecyclerView";
 
   private ClickListener clickListener;
-  protected final ComponentContainer container;
 
   private int textMainColor;
   private float textMainSize;
@@ -58,37 +56,45 @@ public class ListAdapterWithRecyclerView
   private int imageHeight;
   private int imageWidth;
   private float radius;
-
-  private List<YailDictionary> items = new ArrayList<>();
-  private List<YailDictionary> oryginalItems = new ArrayList<>();
+  private List<Object> items = new ArrayList<>();
+  private List<Object> oryginalItems = new ArrayList<>();
   private List<Integer> oryginalPositions = new ArrayList<>();
-  private List<Integer> selectedItems = new ArrayList<>();
-  
-  private int idCard;
-  private int idFirst;
+  protected final ComponentContainer container;
+  private int idFirst = -1;
   private int idSecond = -1;
-  private int idImages = -1;  
+  private int idImages = -1;
+  private int idCard = -1;
+  private List<Integer> selectedItems = new ArrayList<>();
 
   protected final Filter filter = new Filter() {
     @Override
     protected FilterResults performFiltering(CharSequence charSequence) {
       String filterQuery = charSequence.toString().toLowerCase();
       FilterResults results = new FilterResults();
-      List<YailDictionary> filteredList = new ArrayList<>();
+      List<Object> filteredList = new ArrayList<>();
       oryginalPositions = new ArrayList<>();
       if (filterQuery == null || filterQuery.length() == 0) {
         filteredList = new ArrayList<>(oryginalItems);
         items = new ArrayList<>(oryginalItems);
       } else {
         for (int index = 0; index < oryginalItems.size(); index++) {
-          YailDictionary itemDict = oryginalItems.get(index);
-          Object o = itemDict.get(Component.LISTVIEW_KEY_DESCRIPTION);
-          String filterString = itemDict.get(Component.LISTVIEW_KEY_MAIN_TEXT).toString();
-          if (o != null) {
-            filterString += " " + o.toString().toLowerCase();
+          Object item = oryginalItems.get(index);
+          String filterString;
+          if (item instanceof YailDictionary) {
+            if (((YailDictionary) item).containsKey(Component.LISTVIEW_KEY_MAIN_TEXT)) {
+              Object o = ((YailDictionary) item).get(Component.LISTVIEW_KEY_DESCRIPTION);
+              filterString = ((YailDictionary) item).get(Component.LISTVIEW_KEY_MAIN_TEXT).toString();
+              if (o != null) {
+                filterString += " " + o.toString();
+              }
+            } else {
+              filterString = item.toString();
+            }
+          } else {
+            filterString = item.toString();
           }
           if (filterString.toLowerCase().contains(filterQuery)) {
-            filteredList.add(itemDict);
+            filteredList.add(item);
             oryginalPositions.add(index);
           }
         }
@@ -101,7 +107,7 @@ public class ListAdapterWithRecyclerView
     @Override
     protected void publishResults(CharSequence charSequence, FilterResults filterResults) {
       if (filterResults.count > 0) {
-        items = new ArrayList<>((List<YailDictionary>) filterResults.values);
+        items = new ArrayList<>((List<Object>) filterResults.values);
       } else {
         items = new ArrayList<>(oryginalItems);
       }
@@ -126,52 +132,17 @@ public class ListAdapterWithRecyclerView
     this.imageWidth = imageWidth;
     this.imageHeight = imageHeight;
     this.radius = (float) radius;
-    if (!data.isEmpty()) {
-      if (data.get(0) instanceof String) {
-        updateStringData(objectsToStringList(data));
-      } else if (data.get(0) instanceof YailDictionary) {
-        updateData(objectsToDictionaryList(data));
-      } 
-    } else {
-      updateData(new ArrayList<YailDictionary>());
-    }
+    updateData(data);
   }
 
-  private static List<String> objectsToStringList(List<Object> objectList) {
-    List<String> stringList = new ArrayList<>();
-    for (Object object : objectList) {
-      stringList.add((String) object);
-    }
-    return stringList;
-  }
-
-  private static List<YailDictionary> objectsToDictionaryList(List<Object> objectList) {
-    List<YailDictionary> dictList = new ArrayList<>();
-    for (Object object : objectList) {
-      dictList.add((YailDictionary) object);
-    }
-    return dictList;
-  }
-
-  public void updateData(List<YailDictionary> dictItems) {
-    this.oryginalItems = new ArrayList<>(dictItems);
+  public void updateData(List<Object> newItems) {
+    this.oryginalItems = newItems;
     if (oryginalPositions.isEmpty()) {
-      this.items = new ArrayList<>(dictItems);
+      this.items = new ArrayList<>(newItems);
     }
-    if (!selectedItems.isEmpty()) {
+   // if (!selectedItems.isEmpty()) {
       clearSelections();
-    }
-  }
-
-  public void updateStringData(List<String> stringItems) {
-    List<YailDictionary> newItems = new ArrayList<>();
-    // YailList is 1-indexed
-    for(String itemString : stringItems) {
-      YailDictionary itemDict = new YailDictionary();
-      itemDict.put(Component.LISTVIEW_KEY_MAIN_TEXT, itemString);
-      newItems.add(itemDict);
-    }
-    updateData(newItems);
+   // }
   }
 
   @Override
@@ -179,10 +150,12 @@ public class ListAdapterWithRecyclerView
     CardView cardView = new CardView(container.$context());
     cardView.setContentPadding(15, 15, 15, 15);
     cardView.setPreventCornerOverlap(false);
-    cardView.setCardElevation(2.1f);
-    cardView.setRadius(radius);
     cardView.setMaxCardElevation(3f);
     cardView.setCardBackgroundColor(backgroundColor);
+    cardView.setRadius(radius);
+    cardView.setCardElevation(2.1f);
+    ViewCompat.setElevation(cardView, 20);
+       
     cardView.setClickable(true);
     idCard = ViewCompat.generateViewId();
     cardView.setId(idCard);
@@ -190,14 +163,12 @@ public class ListAdapterWithRecyclerView
     CardView.LayoutParams params1 = new CardView.LayoutParams(CardView.LayoutParams.FILL_PARENT, CardView.LayoutParams.WRAP_CONTENT);
     params1.setMargins(0, 0, 0, 0);
 
-    ViewCompat.setElevation(cardView, 20);
-
     // All layouts have a textview containing MainText
     TextView textViewFirst = new TextView(container.$context());
     idFirst = ViewCompat.generateViewId();
     textViewFirst.setId(idFirst);
     LinearLayout.LayoutParams layoutParams1 = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-    //layoutParams1.topMargin = 10;
+   // layoutParams1.topMargin = 10;
     textViewFirst.setLayoutParams(layoutParams1);
     textViewFirst.setTextSize(textMainSize);
     textViewFirst.setTextColor(textMainColor);
@@ -231,7 +202,6 @@ public class ListAdapterWithRecyclerView
       TextViewUtil.setFontTypeface(container.$form(), textViewSecond, textDetailFont, false, false);
       textViewSecond.setTextColor(textDetailColor);
       if (layoutType == Component.LISTVIEW_LAYOUT_TWO_TEXT || layoutType == Component.LISTVIEW_LAYOUT_IMAGE_TWO_TEXT) {
-        layoutParams2.topMargin = 10;
         textViewSecond.setLayoutParams(layoutParams2);
 
         LinearLayout linearLayout2 = new LinearLayout(container.$context());
@@ -245,7 +215,7 @@ public class ListAdapterWithRecyclerView
 
       } else if (layoutType == Component.LISTVIEW_LAYOUT_TWO_TEXT_LINEAR) {
         // Unlike the other two text layouts, linear does not wrap
-        layoutParams2.setMargins(50, 10, 0, 0);
+        layoutParams2.setMargins(50, 0, 0, 0);
         textViewSecond.setLayoutParams(layoutParams2);
         textViewSecond.setMaxLines(1);
         textViewSecond.setEllipsize(null);
@@ -262,7 +232,17 @@ public class ListAdapterWithRecyclerView
 
   @Override
   public void onBindViewHolder(final RvViewHolder holder, int position) {
-    YailDictionary dictItem = items.get(position);
+    Object o = items.get(position);
+    YailDictionary dictItem = new YailDictionary();
+    if (o instanceof YailDictionary) {
+      if (((YailDictionary) o).containsKey(Component.LISTVIEW_KEY_MAIN_TEXT)) {
+        dictItem = (YailDictionary) o;
+      } else {
+        dictItem.put(Component.LISTVIEW_KEY_MAIN_TEXT, o.toString());
+      }
+    } else {
+      dictItem.put(Component.LISTVIEW_KEY_MAIN_TEXT, o.toString());
+    }
     String first = dictItem.get(Component.LISTVIEW_KEY_MAIN_TEXT).toString();
     String second = "";
     if (dictItem.containsKey(Component.LISTVIEW_KEY_DESCRIPTION)) {
@@ -315,7 +295,6 @@ public class ListAdapterWithRecyclerView
   }
 
   public void toggleSelection(int position) {
-    //If filtering, shows indexes read from the list
     if(!oryginalPositions.isEmpty()) {
       position = oryginalPositions.indexOf(position);
     }
@@ -332,7 +311,6 @@ public class ListAdapterWithRecyclerView
 }
 
   public void changeSelections(int position) {
-    //If filtering, shows indexes read from the list
     if(!oryginalPositions.isEmpty()) {
       position = oryginalPositions.indexOf(position);
     }
@@ -358,9 +336,12 @@ public class ListAdapterWithRecyclerView
 
     public RvViewHolder(View view) {
       super(view);
+      
       view.setOnClickListener(this);
+
       cardView = view.findViewById(idCard);
       textViewFirst = view.findViewById(idFirst);
+
       if (idSecond != -1) {
         textViewSecond = view.findViewById(idSecond);
       }
@@ -368,15 +349,15 @@ public class ListAdapterWithRecyclerView
         imageVieww = view.findViewById(idImages);
       }
     }
-
     @Override
     public void onClick(View v) {
       int position = getAdapterPosition();
+
       if (!oryginalPositions.isEmpty()) {
         position = oryginalPositions.get(position);
       }
       clickListener.onItemClick(position, v);
-    }
+    }   
   }
 
   public void setOnItemClickListener(ClickListener clickListener) {
