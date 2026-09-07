@@ -105,9 +105,6 @@ public final class TextBox extends TextBoxBase {
   // If true, then text box is read-only
   private boolean readOnly;
 
-  // KeyListener installed by EditText, saved so ReadOnly can restore it
-  private final android.text.method.KeyListener originalKeyListener;
-
   /**
    * Creates a new TextBox component.
    *
@@ -115,7 +112,6 @@ public final class TextBox extends TextBoxBase {
    */
   public TextBox(ComponentContainer container) {
     super(container, new EditText(container.$context()));
-    originalKeyListener = view.getKeyListener();
     NumbersOnly(false);
     MultiLine(false);
     ReadOnly(false);
@@ -241,9 +237,8 @@ public final class TextBox extends TextBoxBase {
   public void ReadOnly(boolean readOnly) {
     this.readOnly = readOnly;
     view.setFocusable(!readOnly);
-    view.setFocusableInTouchMode(!readOnly);
-    view.setCursorVisible(!readOnly);
-    view.setKeyListener(readOnly ? null : originalKeyListener);
+    view.setClickable(!readOnly);
+    view.setLongClickable(!readOnly);
   }
 
   // TODO(halabelson): We might also want a method to show the keyboard.
